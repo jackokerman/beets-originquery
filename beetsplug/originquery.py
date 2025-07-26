@@ -266,10 +266,6 @@ class OriginQuery(BeetsPlugin):
                         origin_value = int(origin_value) if origin_value.isdigit() else ''
                     item[tag] = origin_value
 
-                # beets weighs media heavily, and will even prioritize a media match over an exact catalognum match.
-                # At the same time, media for uploaded music is often mislabeled (e.g., Enhanced CD and SACD are just
-                # grouped as CD). This does not make a good combination. As a workaround, remove the media from the
-                # item if we also have a catalognum.
-                if item['media'] and item['catalognum']:
-                    del item['media']
-                    tag_compare['media']['active'] = False
+                # Note: Removed the workaround that deleted media when catalognum was present.
+                # This was preventing Discogs searches from using the media field, which is
+                # valuable for finding the correct release format (CD vs Vinyl).
