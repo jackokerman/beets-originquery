@@ -26,6 +26,9 @@ BEETS_TO_LABEL = OrderedDict(
 # Conflicts will be reported if any of these fields don't match.
 CONFLICT_FIELDS = ["catalognum", "media"]
 
+# Supported metadata sources that can provide extra tags
+SUPPORTED_METADATA_SOURCES = ["musicbrainz", "discogs"]
+
 
 def escape_braces(string):
     return string.replace("{", "{{").replace("}", "}}")
@@ -59,13 +62,30 @@ class OriginQuery(BeetsPlugin):
             self.error(msg)
             self.error("Plugin disabled.")
 
-        try:
-            self.extra_tags = config["musicbrainz"]["extra_tags"].get()
-        except confuse.NotFoundError:
-            return fail("This version of beets does not support extra query tags.")
+        # Use the first available source's extra tags
+        self.extra_tags = []
+        self.extra_tags_source = None
 
-        if not len(self.extra_tags):
-            return fail("Config error: musicbrainz.extra_tags not set.")
+        for source in SUPPORTED_METADATA_SOURCES:
+            try:
+                source_extra_tags = config[source]["extra_tags"].get()
+                if source_extra_tags and len(source_extra_tags):
+                    self.extra_tags = source_extra_tags
+                    self.extra_tags_source = source
+                    break
+            except confuse.NotFoundError:
+                # This source doesn't have extra_tags configured, skip it
+                continue
+
+        if not self.extra_tags:
+            return fail(
+                f"Config error: No extra tags found from supported metadata sources "
+                f"({', '.join(SUPPORTED_METADATA_SOURCES)}). "
+                f"At least one source must have extra_tags configured."
+            )
+
+        self.info(f"Using extra tags from: {self.extra_tags_source}")
+        self.info(f"Available extra tags: {', '.join(self.extra_tags)}")
 
         config_patterns = None
         try:
