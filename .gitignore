@@ -1,1 +1,28 @@
-__pycache__
+# Python build artifacts
+*.egg-info/
+*.egg
+build/
+dist/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Ruff cache
+.ruff_cache/

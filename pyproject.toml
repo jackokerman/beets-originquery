@@ -1,0 +1,50 @@
+[build-system]
+requires = ["setuptools>=45", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "beets-originquery"
+version = "1.0.2"
+description = "Integrates origin.txt metadata into beets MusicBrainz queries"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "beets>=1.5.0",
+    "confuse",
+    "jsonpath-rw",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.12.0",
+    "pytest",
+]
+
+[tool.ruff]
+target-version = "py39"
+line-length = 88
+
+[tool.ruff.lint]
+select = [
+    "E",  # pycodestyle
+    "F",  # pyflakes
+    "I",  # isort
+    "N",  # pep8-naming
+    "W",  # pycodestyle
+    "B",  # flake8-bugbear
+    "C4", # flake8-comprehensions
+    "UP", # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.format]
+quote-style = "double"
+indent-style = "space"
+skip-magic-trailing-comma = false
+line-ending = "auto"
+
+[tool.ruff.lint.pycodestyle]
+max-line-length = 88 
