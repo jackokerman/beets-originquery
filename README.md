@@ -85,6 +85,13 @@ extension, you can override the file type with the `origin_type` config option, 
         ...
         origin_type: <yaml|json|text>
 
+Additional configuration options:
+
+    originquery:
+        ...
+        use_origin_on_conflict: yes          # Use origin data on conflicts (default: no)
+        preserve_media_with_catalognum: yes # Preserve media field when catalognum present (default: no)
+
 The patterns used will depend on your origin file type as outlined below.
 
 ### Text files
@@ -259,6 +266,20 @@ By default, `originquery` uses the _tagged data_ in the case of a conflict. This
     originquery:
         ...
         use_origin_on_conflict: yes
+
+### Media Field Workaround
+
+By default, `originquery` removes the `media` field when both `media` and `catalognum` are present. This is because
+beets heavily weights media matches and may prioritize them over catalog number matches, which can lead to incorrect
+releases being selected. If you need to preserve the media field for Discogs searches or other purposes, you can set
+`preserve_media_with_catalognum` to `yes`:
+
+    originquery:
+        ...
+        preserve_media_with_catalognum: yes
+
+**Note**: Disabling this workaround may result in beets selecting incorrect releases due to media field prioritization,
+but preserves the media field for format identification in Discogs searches.
 
 Changelog
 ---------
