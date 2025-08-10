@@ -89,6 +89,7 @@ naming (e.g., `origin-2020025.txt`), you could specify `origin_file: 'origin-*.t
 multiple files, the first file in the alphanumerically sorted list of results will be used.
 
 The tags under `tag_patterns` can be any combination of the following tags:
+* `artist` (artist name from origin data)
 * `media` (CD, vinyl, …)
 * `year` (edition year, _not_ original release year)
 * `country` (US, Japan, …)
@@ -111,6 +112,7 @@ Additional configuration options:
         ...
         use_origin_on_conflict: yes          # Use origin data on conflicts (default: no)
         preserve_media_with_catalognum: yes # Preserve media field when catalognum present (default: no)
+        remove_conflicting_albumartist: yes # Remove albumartist field when it conflicts with origin.yaml artist (default: no)
 
 The patterns used will depend on your origin file type as outlined below.
 
@@ -300,6 +302,22 @@ releases being selected. If you need to preserve the media field for Discogs sea
 
 **Note**: Disabling this workaround may result in beets selecting incorrect releases due to media field prioritization,
 but preserves the media field for format identification in Discogs searches.
+
+### Album Artist Conflict Resolution
+
+When importing music, you may encounter situations where the `albumartist` field in your music files conflicts with the `artist` field from your `origin.yaml` files. This can cause beets to use incorrect artist information for matching, leading to poor or incorrect metadata matches.
+
+The `remove_conflicting_albumartist` option automatically detects these conflicts and removes the problematic `albumartist` field, allowing beets to use the correct artist information from your origin files:
+
+    originquery:
+        ...
+        remove_conflicting_albumartist: yes
+
+**How it works**: During import, the plugin compares the `albumartist` field from your music files with the `artist` field from your `origin.yaml`. If they don't match and this option is enabled, the `albumartist` field is removed, forcing beets to use the correct artist from your origin data.
+
+**When to use**: Enable this option if you have music files with incorrect `albumartist` tags and want the plugin to automatically resolve these conflicts to improve metadata matching accuracy.
+
+**Example**: If your music file has `albumartist=Various Artists` but your `origin.yaml` specifies `artist=The Beatles`, enabling this option will remove the `albumartist` field, allowing beets to use "The Beatles" for matching instead of "Various Artists".
 
 Changelog
 ---------

@@ -14,6 +14,7 @@ from beets.plugins import BeetsPlugin
 
 BEETS_TO_LABEL = OrderedDict(
     [
+        ("artist", "Artist"),
         ("media", "Media"),
         ("year", "Edition year"),
         ("country", "Country"),
@@ -24,7 +25,7 @@ BEETS_TO_LABEL = OrderedDict(
 )
 
 # Conflicts will be reported if any of these fields don't match.
-CONFLICT_FIELDS = ["catalognum", "media"]
+CONFLICT_FIELDS = ["catalognum", "media", "artist"]
 
 # Supported metadata sources that can provide extra tags
 SUPPORTED_METADATA_SOURCES = ["musicbrainz", "discogs"]
@@ -165,6 +166,13 @@ class OriginQuery(BeetsPlugin):
         except confuse.NotFoundError:
             self.preserve_media_with_catalognum = False
 
+        try:
+            self.remove_conflicting_albumartist = self.config[
+                "remove_conflicting_albumartist"
+            ].get(bool)
+        except confuse.NotFoundError:
+            self.remove_conflicting_albumartist = False
+
     def error(self, msg):
         self._log.error(escape_braces(ui.colorize("text_error", msg)))
 
@@ -179,8 +187,8 @@ class OriginQuery(BeetsPlugin):
         headers = ["Field", "Tagged Data", "Origin Data"]
 
         w_key = max(len(headers[0]), *(len(BEETS_TO_LABEL[k]) for k, v in items))
-        w_tagged = max(len(headers[1]), *(len(v["tagged"]) for k, v in items))
-        w_origin = max(len(headers[2]), *(len(v["origin"]) for k, v in items))
+        w_tagged = max(len(headers[1]), *(len(str(v["tagged"])) for k, v in items))
+        w_origin = max(len(headers[2]), *(len(str(v["origin"])) for k, v in items))
 
         self.info(
             f"╔{'═' * (w_key + 2)}╤{'═' * (w_tagged + 2)}╤{'═' * (w_origin + 2)}╗"
@@ -200,8 +208,8 @@ class OriginQuery(BeetsPlugin):
             origin_active = not use_tagged and v["active"]
             self.info(
                 f"║ {BEETS_TO_LABEL[k].ljust(w_key)} │ "
-                f"{highlight(v['tagged'].ljust(w_tagged), tagged_active)} │ "
-                f"{highlight(v['origin'].ljust(w_origin), origin_active)} ║"
+                f"{highlight(str(v['tagged']).ljust(w_tagged), tagged_active)} │ "
+                f"{highlight(str(v['origin']).ljust(w_origin), origin_active)} ║"
             )
         self.info(
             f"╚{'═' * (w_key + 2)}╧{'═' * (w_tagged + 2)}╧{'═' * (w_origin + 2)}╝"
@@ -278,7 +286,7 @@ class OriginQuery(BeetsPlugin):
             tag_compare.update(
                 {
                     tag: {
-                        "tagged": str(likelies[tag]),
+                        "tagged": str(likelies.get(tag, "")),
                         "active": tag in self.extra_tags,
                         "origin": "",
                     }
@@ -327,5 +335,23 @@ class OriginQuery(BeetsPlugin):
                     and item.get("media")
                     and item.get("catalognum")
                 ):
+                    self.info("Removing media field (has catalognum)")
                     del item["media"]
                     tag_compare["media"]["active"] = False
+
+                # Apply artist field conflict resolution
+                # If there's a conflict between albumartist and origin.yaml artist,
+                # remove the problematic albumartist field to force beets to use
+                # the correct artist from origin.yaml
+                if (
+                    self.remove_conflicting_albumartist
+                    and item.get("albumartist")
+                    and item.get("artist")
+                    and item.get("albumartist") != item.get("artist")
+                ):
+                    self.info(
+                        f"Removing conflicting albumartist field: "
+                        f"'{item.get('albumartist')}' != "
+                        f"'{item.get('artist')}'"
+                    )
+                    del item["albumartist"]
