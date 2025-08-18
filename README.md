@@ -90,12 +90,25 @@ multiple files, the first file in the alphanumerically sorted list of results wi
 
 The tags under `tag_patterns` can be any combination of the following tags:
 * `artist` (artist name from origin data)
+* `album` (album name from origin data)
 * `media` (CD, vinyl, …)
 * `year` (edition year, _not_ original release year)
 * `country` (US, Japan, …)
 * `label` (Epic, Atlantic, …)
 * `catalognum` (ABC-XYZ, 102030, …)
 * `albumdisambig` (Remastered, Deluxe Edition, …)
+
+**Additional Display Fields**: You can also specify additional fields in `tag_patterns` that aren't used for import matching but are displayed during the import process for verification purposes. For example, you might add fields like `tags` (genre tags) or other metadata that helps identify the release:
+
+    originquery:
+        origin_file: origin.yaml
+        tag_patterns:
+            artist: "$.Artist"
+            album: "$.Name"
+            year: "$.Edition year"
+            label: "$.Record label"
+            catalognum: "$.Catalog number"
+            tags: "$.Tags"  # This will be displayed but not used for import matching
 
 By default, the origin file parser will be determined by its file extension. `.yaml` will be parsed as YAML, `.json`
 will be parsed as JSON, and generic text parsing will be used otherwise. If your file format doesn't match its
@@ -254,6 +267,8 @@ You'll also notice the shiny new table shown with the beets result. This gives u
 Data column lists the data beets found in the music files, and the Origin Data column lists the data `originquery`
 pulled from the origin file. With this information on hand, it's now clear why beets wasn't able to match the proper
 edition: the music tags don't contain _any_ tags that could actually identify the specific release!
+
+**Display Fields**: If you've configured additional fields in `tag_patterns` that aren't used for import matching, they will be shown below the comparison table in an "Additional origin information" section. This is useful for verifying release details like genre tags, release notes, or other metadata that helps confirm you're importing the correct version.
 
 ### Conflicts
 

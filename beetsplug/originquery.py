@@ -15,6 +15,7 @@ from beets.plugins import BeetsPlugin
 BEETS_TO_LABEL = OrderedDict(
     [
         ("artist", "Artist"),
+        ("album", "Name"),
         ("media", "Media"),
         ("year", "Edition year"),
         ("country", "Country"),
@@ -120,9 +121,11 @@ class OriginQuery(BeetsPlugin):
             self.match_fn = self.match_text
 
         for key, pattern in config_patterns.items():
+            # Add all fields to tag_patterns, but warn about unknown ones
             if key not in BEETS_TO_LABEL:
-                return fail(f'Config error: unknown key "{key}"')
-                self.error("Plugin disabled.")
+                self.info(
+                    f'Display field detected: "{key}" - will be shown during import'
+                )
 
             if origin_type == "json" or origin_type == "yaml":
                 try:
@@ -184,36 +187,39 @@ class OriginQuery(BeetsPlugin):
         self._log.warning(escape_braces(msg))
 
     def print_tags(self, items, use_tagged):
-        headers = ["Field", "Tagged Data", "Origin Data"]
+        # Print import fields in the table format
+        if items:
+            headers = ["Field", "Tagged Data", "Origin Data"]
 
-        w_key = max(len(headers[0]), *(len(BEETS_TO_LABEL[k]) for k, v in items))
-        w_tagged = max(len(headers[1]), *(len(str(v["tagged"])) for k, v in items))
-        w_origin = max(len(headers[2]), *(len(str(v["origin"])) for k, v in items))
+            # Get field labels for import fields
+            w_key = max(len(headers[0]), *(len(BEETS_TO_LABEL[k]) for k, v in items))
+            w_tagged = max(len(headers[1]), *(len(str(v["tagged"])) for k, v in items))
+            w_origin = max(len(headers[2]), *(len(str(v["origin"])) for k, v in items))
 
-        self.info(
-            f"╔{'═' * (w_key + 2)}╤{'═' * (w_tagged + 2)}╤{'═' * (w_origin + 2)}╗"
-        )
-        self.info(
-            f"║ {headers[0].ljust(w_key)} │ "
-            f"{highlight(headers[1].ljust(w_tagged), use_tagged)} │ "
-            f"{highlight(headers[2].ljust(w_origin), not use_tagged)} ║"
-        )
-        self.info(
-            f"╟{'─' * (w_key + 2)}┼{'─' * (w_tagged + 2)}┼{'─' * (w_origin + 2)}╢"
-        )
-        for k, v in items:
-            if not v["tagged"] and not v["origin"]:
-                continue
-            tagged_active = use_tagged and v["active"]
-            origin_active = not use_tagged and v["active"]
             self.info(
-                f"║ {BEETS_TO_LABEL[k].ljust(w_key)} │ "
-                f"{highlight(str(v['tagged']).ljust(w_tagged), tagged_active)} │ "
-                f"{highlight(str(v['origin']).ljust(w_origin), origin_active)} ║"
+                f"╔{'═' * (w_key + 2)}╤{'═' * (w_tagged + 2)}╤{'═' * (w_origin + 2)}╗"
             )
-        self.info(
-            f"╚{'═' * (w_key + 2)}╧{'═' * (w_tagged + 2)}╧{'═' * (w_origin + 2)}╝"
-        )
+            self.info(
+                f"║ {headers[0].ljust(w_key)} │ "
+                f"{highlight(headers[1].ljust(w_tagged), use_tagged)} │ "
+                f"{highlight(headers[2].ljust(w_origin), not use_tagged)} ║"
+            )
+            self.info(
+                f"╟{'─' * (w_key + 2)}┼{'─' * (w_tagged + 2)}┼{'─' * (w_origin + 2)}╢"
+            )
+            for k, v in items:
+                if not v["tagged"] and not v["origin"]:
+                    continue
+                tagged_active = use_tagged and v["active"]
+                origin_active = not use_tagged and v["active"]
+                self.info(
+                    f"║ {BEETS_TO_LABEL[k].ljust(w_key)} │ "
+                    f"{highlight(str(v['tagged']).ljust(w_tagged), tagged_active)} │ "
+                    f"{highlight(str(v['origin']).ljust(w_origin), origin_active)} ║"
+                )
+            self.info(
+                f"╚{'═' * (w_key + 2)}╧{'═' * (w_tagged + 2)}╧{'═' * (w_origin + 2)}╝"
+            )
 
     def before_choose_candidate(self, task, session):
         task_info = self.tasks[task]
@@ -228,6 +234,15 @@ class OriginQuery(BeetsPlugin):
         conflict = task_info.get("conflict", False)
         use_tagged = conflict and not self.use_origin_on_conflict
         self.print_tags(task_info.get("tag_compare").items(), use_tagged)
+
+        # Print display fields separately
+        display_fields = task_info.get("display_fields", {})
+        if display_fields:
+            self.info("Additional origin information:")
+            for key, value in display_fields.items():
+                # Use a simple label for display fields
+                label = key.replace("_", " ").title()
+                self.info(f"  {label}: {value}")
 
         if conflict:
             self.warn("Origin data conflicts with tagged data.")
@@ -282,6 +297,9 @@ class OriginQuery(BeetsPlugin):
         conflict = False
         likelies, consensus = current_metadata(task.items)
         task_info["tag_compare"] = tag_compare = OrderedDict()
+        task_info["display_fields"] = display_fields = OrderedDict()
+
+        # Build tag comparison for import fields (those in BEETS_TO_LABEL)
         for tag in BEETS_TO_LABEL:
             tag_compare.update(
                 {
@@ -294,27 +312,34 @@ class OriginQuery(BeetsPlugin):
             )
 
         for key, value in self.match_fn(origin_path):
-            if tag_compare[key]["origin"]:
-                continue
+            if key in BEETS_TO_LABEL:
+                # Handle import field
+                if tag_compare[key]["origin"]:
+                    continue
+                tagged_value = tag_compare[key]["tagged"]
+                origin_value = sanitize_value(key, value)
+                tag_compare[key]["origin"] = origin_value
 
-            tagged_value = tag_compare[key]["tagged"]
-            origin_value = sanitize_value(key, value)
-            tag_compare[key]["origin"] = origin_value
-            if key not in CONFLICT_FIELDS or not tagged_value or not origin_value:
-                continue
+                # Only check conflicts for import fields that are in CONFLICT_FIELDS
+                if key not in CONFLICT_FIELDS or not tagged_value or not origin_value:
+                    continue
 
-            if key == "catalognum":
-                tagged_value = normalize_catno(tagged_value)
-                origin_value = normalize_catno(origin_value)
+                if key == "catalognum":
+                    tagged_value = normalize_catno(tagged_value)
+                    origin_value = normalize_catno(origin_value)
 
-            if tagged_value != origin_value:
-                conflict = task_info["conflict"] = True
+                if tagged_value != origin_value:
+                    conflict = task_info["conflict"] = True
+            else:
+                # Handle display field
+                display_fields[key] = value
 
         if not conflict or self.use_origin_on_conflict:
             # Update all item with origin metadata.
             for item in task.items:
                 for tag, entry in tag_compare.items():
                     origin_value = entry["origin"]
+                    # Only update items with fields that are in extra_tags
                     if tag not in self.extra_tags:
                         continue
                     if tag == "year" and origin_value:
