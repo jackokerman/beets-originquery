@@ -31,6 +31,9 @@ CONFLICT_FIELDS = ["catalognum", "media", "artist"]
 # Supported metadata sources that can provide extra tags
 SUPPORTED_METADATA_SOURCES = ["musicbrainz", "discogs"]
 
+# Supported providers for URL extraction from origin files
+SUPPORTED_PROVIDERS = ["discogs", "bandcamp"]
+
 
 def escape_braces(string):
     return string.replace("{", "{{").replace("}", "}}")
@@ -48,6 +51,41 @@ def sanitize_value(key, value):
     if key == "year" and value == "0":
         return ""
     return value
+
+
+def scan_file_for_metadata_urls(file_path, provider):
+    """
+    Scan an entire file for metadata URLs for a specific provider.
+    Reads the file as text and searches for URLs matching the provider's domain pattern.
+
+    Args:
+        file_path: Path to the file to scan
+        provider: Provider name (e.g., "discogs", "bandcamp")
+
+    Returns:
+        Dict of {provider: url} if URL found, empty dict otherwise
+    """
+    try:
+        with open(file_path, encoding="utf-8") as f:
+            content = f.read()
+    except (OSError, UnicodeDecodeError):
+        return {}
+
+    # Universal pattern for www.provider.com and subdomain.provider.com
+    provider_pattern = f"https?://[^/]+\\.{provider}\\.com/[^\\s\\]]+"
+
+    # First try to find URLs within BBCode tags: [url]...[/url]
+    bbcode_pattern = rf"\[url\]({provider_pattern})\[/url\]"
+    bbcode_match = re.search(bbcode_pattern, content)
+    if bbcode_match:
+        return {provider: bbcode_match.group(1)}
+
+    # If no BBCode match, look for plain URLs
+    plain_match = re.search(provider_pattern, content)
+    if plain_match:
+        return {provider: plain_match.group(0)}
+
+    return {}
 
 
 def highlight(text, active=True):
@@ -244,6 +282,13 @@ class OriginQuery(BeetsPlugin):
                 label = key.replace("_", " ").title()
                 self.info(f"  {label}: {value}")
 
+        # Show metadata URLs if found
+        metadata_urls = task_info.get("metadata_urls", {})
+        if metadata_urls:
+            self.info("Metadata URLs found:")
+            for source, url in metadata_urls.items():
+                self.info(f"  {source.title()}: {url}")
+
         if conflict:
             self.warn("Origin data conflicts with tagged data.")
 
@@ -333,6 +378,30 @@ class OriginQuery(BeetsPlugin):
             else:
                 # Handle display field
                 display_fields[key] = value
+
+        # Extract metadata URLs from the entire origin file if enabled
+        found_urls = {}
+
+        # Check each supported provider's config and extract URLs in one step
+        for provider in SUPPORTED_PROVIDERS:
+            try:
+                if config[provider]["extract_urls_from_origin"].get(bool):
+                    # Scan for URLs matching this provider's pattern
+                    provider_urls = scan_file_for_metadata_urls(origin_path, provider)
+                    if provider_urls:
+                        found_urls.update(provider_urls)
+                        self.info(
+                            f"Found {provider.title()} URL: {provider_urls[provider]}"
+                        )
+            except confuse.NotFoundError:
+                # Provider not configured, skip
+                continue
+
+        if found_urls:
+            # Store all found URLs in task context
+            task_info["metadata_urls"] = found_urls
+        else:
+            self.info("No metadata URLs found in origin file")
 
         if not conflict or self.use_origin_on_conflict:
             # Update all item with origin metadata.

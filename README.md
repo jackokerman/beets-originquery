@@ -76,6 +76,8 @@ The plugin automatically selects the first available source that has `extra_tags
 
 This means if both sources are configured, MusicBrainz will be used. If only Discogs is configured, it will be used instead.
 
+**URL Extraction**: You can enable automatic extraction of metadata URLs from origin files by adding `extract_urls_from_origin: yes` to any metadata provider's configuration. When enabled, the plugin will scan origin files for URLs matching that provider's domain and extract them for potential use during import.
+
 Your beets configuration must contain a section with the following fields:
 
     originquery:
