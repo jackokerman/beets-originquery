@@ -63,13 +63,13 @@ def scan_file_for_metadata_urls(file_path, provider):
         provider: Provider name (e.g., "discogs", "bandcamp")
 
     Returns:
-        Dict of {provider: url} if URL found, empty dict otherwise
+        List of URLs if found, empty list otherwise
     """
     try:
         with open(file_path, encoding="utf-8") as f:
             content = f.read()
     except (OSError, UnicodeDecodeError):
-        return {}
+        return []
 
     # Universal pattern for www.provider.com and subdomain.provider.com
     provider_pattern = f"https?://[^/]+\\.{provider}\\.com/[^\\s\\]]+"
@@ -78,14 +78,14 @@ def scan_file_for_metadata_urls(file_path, provider):
     bbcode_pattern = rf"\[url\]({provider_pattern})\[/url\]"
     bbcode_match = re.search(bbcode_pattern, content)
     if bbcode_match:
-        return {provider: bbcode_match.group(1)}
+        return [bbcode_match.group(1)]
 
     # If no BBCode match, look for plain URLs
     plain_match = re.search(provider_pattern, content)
     if plain_match:
-        return {provider: plain_match.group(0)}
+        return [plain_match.group(0)]
 
-    return {}
+    return []
 
 
 def highlight(text, active=True):
@@ -282,12 +282,22 @@ class OriginQuery(BeetsPlugin):
                 label = key.replace("_", " ").title()
                 self.info(f"  {label}: {value}")
 
-        # Show metadata URLs if found
-        metadata_urls = task_info.get("metadata_urls", {})
+        # Show metadata URLs if found (read from first item)
+        metadata_urls = {}
+        if task.items:
+            metadata_urls = getattr(task.items[0], "metadata_urls", {})
+
         if metadata_urls:
             self.info("Metadata URLs found:")
-            for source, url in metadata_urls.items():
-                self.info(f"  {source.title()}: {url}")
+            for provider, urls in metadata_urls.items():
+                if len(urls) == 1:
+                    # Single URL - show it directly
+                    self.info(f"  {provider.title()}: {urls[0]}")
+                else:
+                    # Multiple URLs - show as numbered list
+                    self.info(f"  {provider.title()}:")
+                    for i, url in enumerate(urls, 1):
+                        self.info(f"    {i}. {url}")
 
         if conflict:
             self.warn("Origin data conflicts with tagged data.")
@@ -379,28 +389,24 @@ class OriginQuery(BeetsPlugin):
                 # Handle display field
                 display_fields[key] = value
 
-        # Extract metadata URLs from the entire origin file if enabled
-        found_urls = {}
+                # Extract metadata URLs from the entire origin file if enabled
+        metadata_urls = {}
 
-        # Check each supported provider's config and extract URLs in one step
+        # Check each supported provider's config and extract URLs
         for provider in SUPPORTED_PROVIDERS:
             try:
                 if config[provider]["extract_urls_from_origin"].get(bool):
                     # Scan for URLs matching this provider's pattern
-                    provider_urls = scan_file_for_metadata_urls(origin_path, provider)
-                    if provider_urls:
-                        found_urls.update(provider_urls)
-                        self.info(
-                            f"Found {provider.title()} URL: {provider_urls[provider]}"
-                        )
+                    urls = scan_file_for_metadata_urls(origin_path, provider)
+                    if urls:
+                        # Store URLs directly in metadata_urls for this provider
+                        metadata_urls[provider] = urls
+                        self.info(f"Found {provider.title()} URLs: {urls}")
             except confuse.NotFoundError:
                 # Provider not configured, skip
                 continue
 
-        if found_urls:
-            # Store all found URLs in task context
-            task_info["metadata_urls"] = found_urls
-        else:
+        if not metadata_urls:
             self.info("No metadata URLs found in origin file")
 
         if not conflict or self.use_origin_on_conflict:
@@ -433,19 +439,6 @@ class OriginQuery(BeetsPlugin):
                     del item["media"]
                     tag_compare["media"]["active"] = False
 
-                # Apply artist field conflict resolution
-                # If there's a conflict between albumartist and origin.yaml artist,
-                # remove the problematic albumartist field to force beets to use
-                # the correct artist from origin.yaml
-                if (
-                    self.remove_conflicting_albumartist
-                    and item.get("albumartist")
-                    and item.get("artist")
-                    and item.get("albumartist") != item.get("artist")
-                ):
-                    self.info(
-                        f"Removing conflicting albumartist field: "
-                        f"'{item.get('albumartist')}' != "
-                        f"'{item.get('artist')}'"
-                    )
-                    del item["albumartist"]
+                # Add metadata URLs to each item for plugin access
+                if metadata_urls:
+                    item["metadata_urls"] = metadata_urls
