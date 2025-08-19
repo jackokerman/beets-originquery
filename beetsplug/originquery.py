@@ -282,10 +282,15 @@ class OriginQuery(BeetsPlugin):
                 label = key.replace("_", " ").title()
                 self.info(f"  {label}: {value}")
 
-        # Show metadata URLs if found (read from first item)
+        # Show metadata URLs if found (read from extra_tags)
         metadata_urls = {}
         if task.items:
-            metadata_urls = getattr(task.items[0], "metadata_urls", {})
+            item = task.items[0]
+            for provider in SUPPORTED_PROVIDERS:
+                tag_name = f"metadata_urls_{provider}"
+                urls_str = getattr(item, tag_name, None)
+                if urls_str:
+                    metadata_urls[provider] = urls_str.split("; ")
 
         if metadata_urls:
             self.info("Metadata URLs found:")
@@ -439,6 +444,9 @@ class OriginQuery(BeetsPlugin):
                     del item["media"]
                     tag_compare["media"]["active"] = False
 
-                # Add metadata URLs to each item for plugin access
+                # Store metadata URLs in extra_tags for plugin access
                 if metadata_urls:
-                    item["metadata_urls"] = metadata_urls
+                    for provider, urls in metadata_urls.items():
+                        tag_name = f"metadata_urls_{provider}"
+                        # Join multiple URLs with semicolon separator
+                        item[tag_name] = "; ".join(urls)
