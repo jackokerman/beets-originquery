@@ -63,13 +63,13 @@ def scan_file_for_metadata_urls(file_path, provider):
         provider: Provider name (e.g., "discogs", "bandcamp")
 
     Returns:
-        List of URLs if found, empty list otherwise
+        Single URL if found, None otherwise
     """
     try:
         with open(file_path, encoding="utf-8") as f:
             content = f.read()
     except (OSError, UnicodeDecodeError):
-        return []
+        return None
 
     # Universal pattern for www.provider.com and subdomain.provider.com
     provider_pattern = f"https?://[^/]+\\.{provider}\\.com/[^\\s\\]]+"
@@ -78,14 +78,14 @@ def scan_file_for_metadata_urls(file_path, provider):
     bbcode_pattern = rf"\[url\]({provider_pattern})\[/url\]"
     bbcode_match = re.search(bbcode_pattern, content)
     if bbcode_match:
-        return [bbcode_match.group(1)]
+        return bbcode_match.group(1)
 
     # If no BBCode match, look for plain URLs
     plain_match = re.search(provider_pattern, content)
     if plain_match:
-        return [plain_match.group(0)]
+        return plain_match.group(0)
 
-    return []
+    return None
 
 
 def highlight(text, active=True):
@@ -288,21 +288,14 @@ class OriginQuery(BeetsPlugin):
             item = task.items[0]
             for provider in SUPPORTED_PROVIDERS:
                 tag_name = f"metadata_urls_{provider}"
-                urls_str = getattr(item, tag_name, None)
-                if urls_str:
-                    metadata_urls[provider] = urls_str.split("; ")
+                url = getattr(item, tag_name, None)
+                if url:
+                    metadata_urls[provider] = url
 
         if metadata_urls:
             self.info("Metadata URLs found:")
-            for provider, urls in metadata_urls.items():
-                if len(urls) == 1:
-                    # Single URL - show it directly
-                    self.info(f"  {provider.title()}: {urls[0]}")
-                else:
-                    # Multiple URLs - show as numbered list
-                    self.info(f"  {provider.title()}:")
-                    for i, url in enumerate(urls, 1):
-                        self.info(f"    {i}. {url}")
+            for provider, url in metadata_urls.items():
+                self.info(f"  {provider.title()}: {url}")
 
         if conflict:
             self.warn("Origin data conflicts with tagged data.")
@@ -402,11 +395,11 @@ class OriginQuery(BeetsPlugin):
             try:
                 if config[provider]["extract_urls_from_origin"].get(bool):
                     # Scan for URLs matching this provider's pattern
-                    urls = scan_file_for_metadata_urls(origin_path, provider)
-                    if urls:
-                        # Store URLs directly in metadata_urls for this provider
-                        metadata_urls[provider] = urls
-                        self.info(f"Found {provider.title()} URLs: {urls}")
+                    url = scan_file_for_metadata_urls(origin_path, provider)
+                    if url:
+                        # Store URL directly in metadata_urls for this provider
+                        metadata_urls[provider] = url
+                        self.info(f"Found {provider.title()} URL: {url}")
             except confuse.NotFoundError:
                 # Provider not configured, skip
                 continue
@@ -446,7 +439,7 @@ class OriginQuery(BeetsPlugin):
 
                 # Store metadata URLs in extra_tags for plugin access
                 if metadata_urls:
-                    for provider, urls in metadata_urls.items():
+                    for provider, url in metadata_urls.items():
                         tag_name = f"metadata_urls_{provider}"
-                        # Join multiple URLs with semicolon separator
-                        item[tag_name] = "; ".join(urls)
+                        # Store the single URL
+                        item[tag_name] = url
